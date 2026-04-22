@@ -266,6 +266,113 @@ validate_sources() {
     fi
 }
 
+install_system_dependencies() {
+    local system_install=$1
+    
+    echo "Checking for required system dependencies..."
+    
+    # Check for cwebp
+    if ! command -v cwebp >/dev/null 2>&1; then
+        echo "cwebp not found. Installing webp package..."
+        
+        if command -v apt >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                apt update && apt install -y webp imagemagick
+            else
+                echo "Please install webp and imagemagick: sudo apt install webp imagemagick"
+                return 1
+            fi
+        elif command -v pacman >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                pacman -S --noconfirm libwebp-utils imagemagick
+            else
+                echo "Please install webp and imagemagick: sudo pacman -S libwebp-utils imagemagick"
+                return 1
+            fi
+        elif command -v dnf >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                dnf install -y libwebp-utils ImageMagick
+            else
+                echo "Please install webp and imagemagick: sudo dnf install libwebp-utils ImageMagick"
+                return 1
+            fi
+        elif command -v brew >/dev/null 2>&1; then
+            brew install webp imagemagick
+        else
+            echo "WARNING: Could not detect package manager. Please install webp and imagemagick manually."
+            return 1
+        fi
+    fi
+    
+    # Check for ImageMagick convert
+    if ! command -v convert >/dev/null 2>&1; then
+        echo "ImageMagick not found. Installing imagemagick package..."
+        
+        if command -v apt >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                apt update && apt install -y imagemagick
+            else
+                echo "Please install imagemagick: sudo apt install imagemagick"
+                return 1
+            fi
+        elif command -v pacman >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                pacman -S --noconfirm imagemagick
+            else
+                echo "Please install imagemagick: sudo pacman -S imagemagick"
+                return 1
+            fi
+        elif command -v dnf >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                dnf install -y ImageMagick
+            else
+                echo "Please install imagemagick: sudo dnf install ImageMagick"
+                return 1
+            fi
+        elif command -v brew >/dev/null 2>&1; then
+            brew install imagemagick
+        else
+            echo "WARNING: Could not detect package manager. Please install imagemagick manually."
+            return 1
+        fi
+    fi
+    
+    # Check for clipboard tools (xclip for X11 or wl-copy for Wayland)
+    if ! command -v xclip >/dev/null 2>&1 && ! command -v wl-copy >/dev/null 2>&1; then
+        echo "Clipboard tool not found. Installing xclip/wl-clipboard..."
+        
+        if command -v apt >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                apt update && apt install -y xclip wl-clipboard
+            else
+                echo "Please install clipboard tools: sudo apt install xclip wl-clipboard"
+                return 1
+            fi
+        elif command -v pacman >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                pacman -S --noconfirm xclip wl-clipboard
+            else
+                echo "Please install clipboard tools: sudo pacman -S xclip wl-clipboard"
+                return 1
+            fi
+        elif command -v dnf >/dev/null 2>&1; then
+            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
+                dnf install -y xclip wl-clipboard
+            else
+                echo "Please install clipboard tools: sudo dnf install xclip wl-clipboard"
+                return 1
+            fi
+        elif command -v brew >/dev/null 2>&1; then
+            brew install xclip wl-clipboard
+        else
+            echo "WARNING: Could not detect package manager. Please install xclip or wl-clipboard manually."
+            return 1
+        fi
+    fi
+    
+    echo "System dependencies verified."
+}
+
 install_python_tools() {
     local system_install=$1
     local install_dir=$2
@@ -355,6 +462,7 @@ main() {
         install_dir="${HOME}/.local/bin"
     fi
 
+    install_system_dependencies "$system_install"
     install_python_tools "$system_install" "$install_dir"
     install_shell_tools "$install_dir"
     ensure_webp_config
