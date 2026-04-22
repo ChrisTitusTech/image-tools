@@ -1,0 +1,35 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# pip install leftovers
+*.egg-link
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Downloaded model weights (large binary files)
+*.pth
+*.ckpt
+
+# VS Code and project-local settings
+.vscode/
+pyrightconfig.json
+
+# OS/editor files
+.DS_Store
+*.swp
+*.swo
+*~

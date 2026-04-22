@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "image-tools"
+version = "1.0.0"
+description = "Unified CLI toolkit for image resize, upscale, and Thunar WebP conversion workflows"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+upscale = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "opencv-python>=4.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ChrisTitusTech/image-tools"
+"Bug Tracker" = "https://github.com/ChrisTitusTech/image-tools/issues"
+
+[project.scripts]
+resize = "image_tools.resize:main"
+upscale = "image_tools.upscale:main"
+copy-image = "image_tools.clipboard:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["image_tools*"]
