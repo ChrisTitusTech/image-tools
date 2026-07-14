@@ -53,7 +53,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [--system] [--bin-dir DIR] [--skip-thunar]
 
-Installs image-resize, image-upscale, and WebP conversion tools together.
+Installs the resize, upscale, clipboard, and WebP conversion tools together.
 
 Options:
   --system       Install to /opt/image-tools/venv and use /usr/local/bin.
@@ -266,110 +266,86 @@ validate_sources() {
     fi
 }
 
+run_as_root() {
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        echo "ERROR: Installing system packages requires root privileges or sudo." >&2
+        return 1
+    fi
+}
+
 install_system_dependencies() {
-    local system_install=$1
-    
+    local need_clipboard=0
+    local need_imagemagick=0
+    local need_notifications=0
+    local need_webp=0
+    local need_zenity=0
+    local -a packages=()
+
     echo "Checking for required system dependencies..."
-    
-    # Check for cwebp
+
     if ! command -v cwebp >/dev/null 2>&1; then
-        echo "cwebp not found. Installing webp package..."
-        
-        if command -v apt >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                apt update && apt install -y webp imagemagick
-            else
-                echo "Please install webp and imagemagick: sudo apt install webp imagemagick"
-                return 1
-            fi
-        elif command -v pacman >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                pacman -S --noconfirm libwebp-utils imagemagick
-            else
-                echo "Please install webp and imagemagick: sudo pacman -S libwebp-utils imagemagick"
-                return 1
-            fi
-        elif command -v dnf >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                dnf install -y libwebp-utils ImageMagick
-            else
-                echo "Please install webp and imagemagick: sudo dnf install libwebp-utils ImageMagick"
-                return 1
-            fi
-        elif command -v brew >/dev/null 2>&1; then
-            brew install webp imagemagick
-        else
-            echo "WARNING: Could not detect package manager. Please install webp and imagemagick manually."
-            return 1
-        fi
+        need_webp=1
     fi
-    
-    # Check for ImageMagick convert
-    if ! command -v convert >/dev/null 2>&1; then
-        echo "ImageMagick not found. Installing imagemagick package..."
-        
-        if command -v apt >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                apt update && apt install -y imagemagick
-            else
-                echo "Please install imagemagick: sudo apt install imagemagick"
-                return 1
-            fi
-        elif command -v pacman >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                pacman -S --noconfirm imagemagick
-            else
-                echo "Please install imagemagick: sudo pacman -S imagemagick"
-                return 1
-            fi
-        elif command -v dnf >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                dnf install -y ImageMagick
-            else
-                echo "Please install imagemagick: sudo dnf install ImageMagick"
-                return 1
-            fi
-        elif command -v brew >/dev/null 2>&1; then
-            brew install imagemagick
-        else
-            echo "WARNING: Could not detect package manager. Please install imagemagick manually."
-            return 1
-        fi
+
+    if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
+        need_imagemagick=1
     fi
-    
-    # Check for clipboard tools (xclip for X11 or wl-copy for Wayland)
+
     if ! command -v xclip >/dev/null 2>&1 && ! command -v wl-copy >/dev/null 2>&1; then
-        echo "Clipboard tool not found. Installing xclip/wl-clipboard..."
-        
-        if command -v apt >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                apt update && apt install -y xclip wl-clipboard
-            else
-                echo "Please install clipboard tools: sudo apt install xclip wl-clipboard"
-                return 1
-            fi
-        elif command -v pacman >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                pacman -S --noconfirm xclip wl-clipboard
-            else
-                echo "Please install clipboard tools: sudo pacman -S xclip wl-clipboard"
-                return 1
-            fi
-        elif command -v dnf >/dev/null 2>&1; then
-            if [[ $system_install -eq 1 || $EUID -eq 0 ]]; then
-                dnf install -y xclip wl-clipboard
-            else
-                echo "Please install clipboard tools: sudo dnf install xclip wl-clipboard"
-                return 1
-            fi
-        elif command -v brew >/dev/null 2>&1; then
-            brew install xclip wl-clipboard
-        else
-            echo "WARNING: Could not detect package manager. Please install xclip or wl-clipboard manually."
-            return 1
-        fi
+        need_clipboard=1
     fi
-    
+
+    if ! command -v zenity >/dev/null 2>&1; then
+        need_zenity=1
+    fi
+
+    if ! command -v notify-send >/dev/null 2>&1; then
+        need_notifications=1
+    fi
+
+    if [[ $need_webp -eq 0 && $need_imagemagick -eq 0 && $need_clipboard -eq 0 && $need_zenity -eq 0 && $need_notifications -eq 0 ]]; then
+        echo "System dependencies verified."
+        return
+    fi
+
+    if command -v apt >/dev/null 2>&1; then
+        [[ $need_webp -eq 1 ]] && packages+=(webp)
+        [[ $need_imagemagick -eq 1 ]] && packages+=(imagemagick)
+        [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
+        [[ $need_zenity -eq 1 ]] && packages+=(zenity)
+        [[ $need_notifications -eq 1 ]] && packages+=(libnotify-bin)
+        run_as_root apt update
+        run_as_root apt install -y "${packages[@]}"
+    elif command -v pacman >/dev/null 2>&1; then
+        [[ $need_webp -eq 1 ]] && packages+=(libwebp-utils)
+        [[ $need_imagemagick -eq 1 ]] && packages+=(imagemagick)
+        [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
+        [[ $need_zenity -eq 1 ]] && packages+=(zenity)
+        [[ $need_notifications -eq 1 ]] && packages+=(libnotify)
+        run_as_root pacman -S --needed --noconfirm "${packages[@]}"
+    elif command -v dnf >/dev/null 2>&1; then
+        [[ $need_webp -eq 1 ]] && packages+=(libwebp-tools)
+        [[ $need_imagemagick -eq 1 ]] && packages+=(ImageMagick)
+        [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
+        [[ $need_zenity -eq 1 ]] && packages+=(zenity)
+        [[ $need_notifications -eq 1 ]] && packages+=(libnotify)
+        run_as_root dnf install -y "${packages[@]}"
+    elif command -v brew >/dev/null 2>&1; then
+        [[ $need_webp -eq 1 ]] && packages+=(webp)
+        [[ $need_imagemagick -eq 1 ]] && packages+=(imagemagick)
+        [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
+        [[ $need_zenity -eq 1 ]] && packages+=(zenity)
+        brew install "${packages[@]}"
+    else
+        echo "ERROR: Could not detect a supported package manager." >&2
+        echo "Install cwebp, ImageMagick, a clipboard backend, zenity, and notify-send manually." >&2
+        return 1
+    fi
+
     echo "System dependencies verified."
 }
 
@@ -396,7 +372,7 @@ install_python_tools() {
     install -d -m 755 "$(dirname "$venv_dir")"
     python3 -m venv "$venv_dir"
     "$venv_dir/bin/python" -m pip install --upgrade pip
-    "$venv_dir/bin/python" -m pip install --upgrade "$SCRIPT_DIR[upscale]"
+    "$venv_dir/bin/python" -m pip install --upgrade "${SCRIPT_DIR}[upscale]"
 
     install -d -m 755 "$install_dir"
     install -m 755 "$venv_dir/bin/resize" "$install_dir/resize"
@@ -462,7 +438,7 @@ main() {
         install_dir="${HOME}/.local/bin"
     fi
 
-    install_system_dependencies "$system_install"
+    install_system_dependencies
     install_python_tools "$system_install" "$install_dir"
     install_shell_tools "$install_dir"
     ensure_webp_config

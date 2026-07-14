@@ -112,15 +112,19 @@ load_config
 # Dependency check
 if ! command -v cwebp &>/dev/null; then
     notify-send -u critical "convert-to-webp" \
-        "❌ 'cwebp' not found.\nInstall it with:  sudo pacman -S libwebp-utils" 2>/dev/null || true
-    echo "ERROR: 'cwebp' is not installed. Run: sudo pacman -S libwebp-utils" >&2
+        "'cwebp' not found. Run install.sh to install system dependencies." 2>/dev/null || true
+    echo "ERROR: 'cwebp' is not installed. Run install.sh to install system dependencies." >&2
     exit 1
 fi
 
-if ! command -v convert &>/dev/null; then
+if command -v magick >/dev/null 2>&1; then
+    imagemagick_command=(magick)
+elif command -v convert >/dev/null 2>&1; then
+    imagemagick_command=(convert)
+else
     notify-send -u critical "convert-to-webp" \
-        "❌ 'convert' (ImageMagick) not found.\nInstall it with:  sudo pacman -S imagemagick" 2>/dev/null || true
-    echo "ERROR: 'convert' (ImageMagick) is not installed. Run: sudo pacman -S imagemagick" >&2
+        "ImageMagick not found. Run install.sh to install system dependencies." 2>/dev/null || true
+    echo "ERROR: ImageMagick is not installed. Run install.sh to install system dependencies." >&2
     exit 1
 fi
 
@@ -153,7 +157,7 @@ for src in "$@"; do
     tmp="$(mktemp /tmp/webp-resize-XXXXXX.png)"
     trap 'rm -f "$tmp"' EXIT
 
-    if ! convert "$src" -resize "${TARGET_WIDTH}>" "$tmp" 2>/dev/null; then
+    if ! "${imagemagick_command[@]}" "$src" -resize "${TARGET_WIDTH}>" "$tmp" 2>/dev/null; then
         echo "  ✗ Resize failed for: $src"
         (( failed++ )) || true
         rm -f "$tmp"
