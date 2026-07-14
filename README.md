@@ -35,6 +35,7 @@ chmod +x install.sh
 | `--skip-thunar` | Skip registering Thunar right-click actions |
 
 Default (user) install puts commands in `~/.local/bin` and the venv in `~/.local/share/image-tools/venv`.
+When system packages are missing, the installer uses `sudo` to install them with `apt`, `dnf`, or `pacman`.
 
 ## Usage
 
@@ -94,7 +95,8 @@ A Thunar right-click action **"Copy Image to Clipboard"** is also registered.
 - **resize**: Python ≥ 3.9, Pillow ≥ 10
 - **upscale**: Python ≥ 3.9, PyTorch ≥ 2.0, torchvision ≥ 0.15, opencv-python ≥ 4.8
 - **copy-image**: Python ≥ 3.9, Pillow ≥ 10; `xclip` (X11) or `wl-copy` (Wayland)
-- **convert-to-webp**: `cwebp`, ImageMagick (`convert`)
+- **convert-to-webp**: `cwebp`, ImageMagick (`magick` or `convert`)
+- **desktop actions**: Zenity and `notify-send`
 
 ## Project layout
 
