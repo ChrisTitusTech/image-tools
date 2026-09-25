@@ -16,6 +16,8 @@ UPSCALE_WRAPPER_NAME="upscale-selected"
 WEBP_COMMAND_NAME="convert-to-webp"
 COPY_WRAPPER_NAME="copy-selected"
 
+SOCIAL_COMMAND_NAME="convert-to-social-video"
+
 # Thunar metadata
 THUNAR_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/Thunar"
 THUNAR_UCA_FILE="${THUNAR_CONFIG_DIR}/uca.xml"
@@ -40,6 +42,11 @@ ACTION_COPY_NAME="Copy Image to Clipboard"
 ACTION_COPY_DESCRIPTION="Copy selected image content to the clipboard (X11 or Wayland)."
 ACTION_COPY_ICON="edit-copy"
 
+ACTION_SOCIAL_ID="thunar-social-video-convert"
+ACTION_SOCIAL_NAME="Convert to Social Video"
+ACTION_SOCIAL_DESCRIPTION="Convert videos to social-ready MP4 with progress and time remaining."
+ACTION_SOCIAL_ICON="video-x-generic"
+
 WEBP_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/webp-convert"
 WEBP_CONFIG_FILE="${WEBP_CONFIG_DIR}/config.toml"
 DEFAULT_WEBP_CONFIG_CONTENT=$(cat <<'EOF'
@@ -53,7 +60,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [--system] [--bin-dir DIR] [--skip-thunar]
 
-Installs the resize, upscale, clipboard, and WebP conversion tools together.
+Installs the resize, upscale, clipboard, WebP, and social video conversion tools together.
 
 Options:
   --system       Install to /opt/image-tools/venv and use /usr/local/bin.
@@ -126,6 +133,7 @@ write_uca_file_with_action() {
     local action_description=$4
     local action_name=$5
     local action_icon=$6
+    local file_types=${7:-"<directories/><audio-files/><image-files/><other-files/><text-files/><video-files/>"}
 
     cat > "$destination" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -139,12 +147,7 @@ write_uca_file_with_action() {
     <description>${action_description}</description>
     <patterns>*</patterns>
     <startup-notify/>
-    <directories/>
-    <audio-files/>
-    <image-files/>
-    <other-files/>
-    <text-files/>
-    <video-files/>
+    ${file_types}
   </action>
 </actions>
 EOF
@@ -156,6 +159,7 @@ update_thunar_action() {
     local action_description=$3
     local action_icon=$4
     local installed_command=$5
+    local file_types=${6:-"<directories/><audio-files/><image-files/><other-files/><text-files/><video-files/>"}
 
     local escaped_command
     local escaped_description
@@ -172,7 +176,7 @@ update_thunar_action() {
     install -d -m 755 "$THUNAR_CONFIG_DIR"
 
     if [[ ! -f "$THUNAR_UCA_FILE" ]]; then
-        write_uca_file_with_action "$THUNAR_UCA_FILE" "$action_id" "$escaped_command" "$escaped_description" "$escaped_name" "$escaped_icon"
+        write_uca_file_with_action "$THUNAR_UCA_FILE" "$action_id" "$escaped_command" "$escaped_description" "$escaped_name" "$escaped_icon" "$file_types"
         chmod 644 "$THUNAR_UCA_FILE"
         return
     fi
@@ -192,6 +196,7 @@ update_thunar_action() {
         -v action_command="$escaped_command" \
         -v action_description="$escaped_description" \
         -v action_name="$escaped_name" \
+        -v file_types="$file_types" \
         -v action_icon="$escaped_icon" '
             BEGIN {
                 inserted = 0
@@ -204,12 +209,7 @@ update_thunar_action() {
                     "    <description>" action_description "</description>\n" \
                     "    <patterns>*</patterns>\n" \
                     "    <startup-notify/>\n" \
-                    "    <directories/>\n" \
-                    "    <audio-files/>\n" \
-                    "    <image-files/>\n" \
-                    "    <other-files/>\n" \
-                    "    <text-files/>\n" \
-                    "    <video-files/>\n" \
+                    "    " file_types "\n" \
                     "  </action>\n"
             }
 
@@ -251,6 +251,7 @@ validate_sources() {
         "$SCRIPT_DIR/image_tools/resize.py" \
         "$SCRIPT_DIR/image_tools/upscale.py" \
         "$SCRIPT_DIR/image_tools/clipboard.py" \
+        "$SCRIPT_DIR/image_tools/social_video.py" \
         "$RESIZE_WRAPPER_SOURCE" \
         "$UPSCALE_WRAPPER_SOURCE" \
         "$WEBP_CONVERTER_SOURCE" \
@@ -278,6 +279,7 @@ run_as_root() {
 }
 
 install_system_dependencies() {
+    local need_handbrake=0
     local need_clipboard=0
     local need_imagemagick=0
     local need_notifications=0
@@ -286,6 +288,10 @@ install_system_dependencies() {
     local -a packages=()
 
     echo "Checking for required system dependencies..."
+
+    if ! command -v HandBrakeCLI >/dev/null 2>&1; then
+        need_handbrake=1
+    fi
 
     if ! command -v cwebp >/dev/null 2>&1; then
         need_webp=1
@@ -307,12 +313,13 @@ install_system_dependencies() {
         need_notifications=1
     fi
 
-    if [[ $need_webp -eq 0 && $need_imagemagick -eq 0 && $need_clipboard -eq 0 && $need_zenity -eq 0 && $need_notifications -eq 0 ]]; then
+    if [[ $need_handbrake -eq 0 && $need_webp -eq 0 && $need_imagemagick -eq 0 && $need_clipboard -eq 0 && $need_zenity -eq 0 && $need_notifications -eq 0 ]]; then
         echo "System dependencies verified."
         return
     fi
 
     if command -v apt >/dev/null 2>&1; then
+        [[ $need_handbrake -eq 1 ]] && packages+=(handbrake-cli)
         [[ $need_webp -eq 1 ]] && packages+=(webp)
         [[ $need_imagemagick -eq 1 ]] && packages+=(imagemagick)
         [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
@@ -321,6 +328,7 @@ install_system_dependencies() {
         run_as_root apt update
         run_as_root apt install -y "${packages[@]}"
     elif command -v pacman >/dev/null 2>&1; then
+        [[ $need_handbrake -eq 1 ]] && packages+=(handbrake-cli)
         [[ $need_webp -eq 1 ]] && packages+=(libwebp-utils)
         [[ $need_imagemagick -eq 1 ]] && packages+=(imagemagick)
         [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
@@ -328,6 +336,7 @@ install_system_dependencies() {
         [[ $need_notifications -eq 1 ]] && packages+=(libnotify)
         run_as_root pacman -S --needed --noconfirm "${packages[@]}"
     elif command -v dnf >/dev/null 2>&1; then
+        [[ $need_handbrake -eq 1 ]] && packages+=(HandBrake-cli)
         [[ $need_webp -eq 1 ]] && packages+=(libwebp-tools)
         [[ $need_imagemagick -eq 1 ]] && packages+=(ImageMagick)
         [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
@@ -335,6 +344,7 @@ install_system_dependencies() {
         [[ $need_notifications -eq 1 ]] && packages+=(libnotify)
         run_as_root dnf install -y "${packages[@]}"
     elif command -v brew >/dev/null 2>&1; then
+        [[ $need_handbrake -eq 1 ]] && packages+=(handbrake)
         [[ $need_webp -eq 1 ]] && packages+=(webp)
         [[ $need_imagemagick -eq 1 ]] && packages+=(imagemagick)
         [[ $need_clipboard -eq 1 ]] && packages+=(xclip wl-clipboard)
@@ -342,10 +352,14 @@ install_system_dependencies() {
         brew install "${packages[@]}"
     else
         echo "ERROR: Could not detect a supported package manager." >&2
-        echo "Install cwebp, ImageMagick, a clipboard backend, zenity, and notify-send manually." >&2
+        echo "Install HandBrakeCLI, cwebp, ImageMagick, a clipboard backend, zenity, and notify-send manually." >&2
         return 1
     fi
 
+    if ! command -v HandBrakeCLI >/dev/null 2>&1; then
+        echo "ERROR: HandBrakeCLI is unavailable. On Fedora, enable RPM Fusion and install HandBrake-cli, then rerun this installer." >&2
+        return 1
+    fi
     echo "System dependencies verified."
 }
 
@@ -378,6 +392,8 @@ install_python_tools() {
     install -m 755 "$venv_dir/bin/resize" "$install_dir/resize"
     install -m 755 "$venv_dir/bin/upscale" "$install_dir/upscale"
     install -m 755 "$venv_dir/bin/copy-image" "$install_dir/copy-image"
+
+    install -m 755 "$venv_dir/bin/$SOCIAL_COMMAND_NAME" "$install_dir/$SOCIAL_COMMAND_NAME"
 
     echo "Installed Python CLIs in venv: $venv_dir"
 }
@@ -448,6 +464,7 @@ main() {
         update_thunar_action "$ACTION_UPSCALE_ID" "$ACTION_UPSCALE_NAME" "$ACTION_UPSCALE_DESCRIPTION" "$ACTION_UPSCALE_ICON" "$install_dir/$UPSCALE_WRAPPER_NAME"
         update_thunar_action "$ACTION_WEBP_ID" "$ACTION_WEBP_NAME" "$ACTION_WEBP_DESCRIPTION" "$ACTION_WEBP_ICON" "$install_dir/$WEBP_COMMAND_NAME"
         update_thunar_action "$ACTION_COPY_ID" "$ACTION_COPY_NAME" "$ACTION_COPY_DESCRIPTION" "$ACTION_COPY_ICON" "$install_dir/$COPY_WRAPPER_NAME"
+        update_thunar_action "$ACTION_SOCIAL_ID" "$ACTION_SOCIAL_NAME" "$ACTION_SOCIAL_DESCRIPTION" "$ACTION_SOCIAL_ICON" "$install_dir/$SOCIAL_COMMAND_NAME" "<video-files/>"
     fi
 
     cat <<EOF
@@ -462,12 +479,14 @@ Commands:
   $UPSCALE_WRAPPER_NAME
   $WEBP_COMMAND_NAME
   $COPY_WRAPPER_NAME
+  $SOCIAL_COMMAND_NAME
 
 Thunar actions:
   $ACTION_RESIZE_NAME
   $ACTION_UPSCALE_NAME
   $ACTION_WEBP_NAME
   $ACTION_COPY_NAME
+  $ACTION_SOCIAL_NAME
 
 If '$install_dir' is not on your PATH, add it before using the commands.
 Restart Thunar if it is currently open so it reloads custom actions.

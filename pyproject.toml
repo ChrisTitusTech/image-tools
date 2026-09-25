@@ -28,6 +28,7 @@ Homepage = "https://github.com/ChrisTitusTech/image-tools"
 resize = "image_tools.resize:main"
 upscale = "image_tools.upscale:main"
 copy-image = "image_tools.clipboard:main"
+convert-to-social-video = "image_tools.social_video:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
