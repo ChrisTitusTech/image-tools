@@ -31,6 +31,15 @@ class SocialVideoTests(unittest.TestCase):
         self.assertEqual(events.get()["Working"]["ETASeconds"], 32)
         self.assertIsNone(events.get())
 
+    def test_reader_failure_is_reported_and_signals_completion(self):
+        class BrokenStream:
+            def __iter__(self):
+                raise OSError("broken pipe")
+        events = queue.Queue()
+        video.read_events(BrokenStream(), events)
+        self.assertIsInstance(events.get_nowait(), OSError)
+        self.assertIsNone(events.get_nowait())
+
     def test_duration_and_size_do_not_limit_conversion(self):
         for duration in (0.25, 141, 3600):
             with self.subTest(duration=duration), tempfile.TemporaryDirectory() as directory:
@@ -100,6 +109,32 @@ class SocialVideoTests(unittest.TestCase):
             self.assertEqual(action.findtext("command"), '"/tmp/bin with spaces/convert-to-social-video" %F')
             self.assertIsNotNone(action.find("video-files"))
             self.assertIsNone(action.find("image-files"))
+
+    @unittest.skipUnless(all(shutil.which(tool) for tool in ("HandBrakeCLI", "ffmpeg")), "Requires video tools")
+    def test_display_orientation_matches_source_pixels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base.mp4"
+            pattern = ("color=c=black:size=192x128:rate=10,"
+                       "drawbox=x=0:y=0:w=96:h=64:color=red:t=fill,"
+                       "drawbox=x=96:y=0:w=96:h=64:color=green:t=fill,"
+                       "drawbox=x=0:y=64:w=96:h=64:color=blue:t=fill,"
+                       "drawbox=x=96:y=64:w=96:h=64:color=yellow:t=fill")
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", pattern,
+                            "-t", "1", "-c:v", "libx264", str(base)], check=True)
+            def pixels(path):
+                return subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(path),
+                    "-vf", "scale=24:24", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+            for angle in (0, 90, 180, 270):
+                with self.subTest(angle=angle):
+                    source = root / f"rotation-{angle}.mp4"
+                    subprocess.run(["ffmpeg", "-v", "error", "-display_rotation", str(angle),
+                                    "-i", str(base), "-c", "copy", str(source)], check=True)
+                    output = video.convert(source, Progress(), 0, 1)
+                    original, converted = pixels(source), pixels(output)
+                    error = sum(abs(a - b) for a, b in zip(original, converted)) / len(original)
+                    # Allow color conversion/codec differences, but reject flipped quadrants.
+                    self.assertLess(error, 25)
 
     @unittest.skipUnless(all(shutil.which(tool) for tool in ("HandBrakeCLI", "ffmpeg", "ffprobe")), "Requires video tools")
     def test_real_encodes_and_cancellation(self):

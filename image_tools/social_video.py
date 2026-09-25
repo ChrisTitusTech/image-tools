@@ -68,20 +68,24 @@ class Progress:
 def read_events(stream, events):
     """HandBrake prefixes multiline JSON objects with a record name."""
     buffer = ""
-    for line in stream:
-        if not buffer:
-            if ": {" not in line:
+    try:
+        for line in stream:
+            if not buffer:
+                if ": {" not in line:
+                    continue
+                buffer = line[line.index("{"):]
+            else:
+                buffer += line
+            try:
+                value = json.loads(buffer)
+            except json.JSONDecodeError:
                 continue
-            buffer = line[line.index("{"):]
-        else:
-            buffer += line
-        try:
-            value = json.loads(buffer)
-        except json.JSONDecodeError:
-            continue
-        events.put(value)
-        buffer = ""
-    events.put(None)
+            events.put(value)
+            buffer = ""
+    except Exception as error:
+        events.put(error)
+    finally:
+        events.put(None)
 
 
 def handbrake(arguments, progress, on_event):
@@ -103,6 +107,8 @@ def handbrake(arguments, progress, on_event):
                     continue
                 if event is None:
                     break
+                if isinstance(event, Exception):
+                    raise RuntimeError("Could not read HandBrake output") from event
                 on_event(event)
             result = process.wait()
             if result:
